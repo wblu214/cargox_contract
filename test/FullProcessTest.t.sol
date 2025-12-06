@@ -6,7 +6,6 @@ import {MockUSDT} from "../src/MockUSDT.sol";
 import {CommodityAssetRegistry} from "../src/CommodityAssetRegistry.sol";
 import {ReceivablePool, IERC20} from "../src/ReceivablePool.sol";
 import {ICommodityAssetRegistry} from "../src/interfaces/ICommodityAssetRegistry.sol";
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {console} from "forge-std/console.sol";
 
 contract FullProcessTest is Test {
@@ -199,24 +198,21 @@ contract FullProcessTest is Test {
         assertEq(lpEarnings, payoff);
     }
 
-    function testRegisterAssetThroughPoolRequiresOwner() public {
+    function testAnyWalletCanRegisterAndUpdateStatus() public {
         vm.prank(lp);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, lp));
-        pool.registerAsset(
+        uint256 assetId = pool.registerAsset(
             borrower,
             "Nickel",
             "ipfs://nickel",
             1000,
             "ton",
             ASSET_VALUE,
-            ICommodityAssetRegistry.AssetStatus.InTransit
+            ICommodityAssetRegistry.AssetStatus.Registered
         );
-    }
 
-    function testUpdateStatusRequiresOwner() public {
-        vm.prank(lp);
-        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, lp));
-        pool.updateAssetStatus(1, ICommodityAssetRegistry.AssetStatus.Cleared);
+        vm.prank(payer);
+        pool.updateAssetStatus(assetId, ICommodityAssetRegistry.AssetStatus.InTransit);
+        assertEq(uint256(registry.assetStatus(assetId)), uint256(ICommodityAssetRegistry.AssetStatus.InTransit));
     }
 
     function testCannotCreateDealWithZeroPayer() public {

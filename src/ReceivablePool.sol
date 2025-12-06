@@ -96,7 +96,6 @@ contract ReceivablePool is Ownable {
     }
 
     /// @notice 通过池子代理注册商品资产（池子是 registry 的 owner）
-    /// @dev 仅池子 owner 可调用；状态在创建时即设定
     function registerAsset(
         address issuer,
         string calldata name,
@@ -105,7 +104,7 @@ contract ReceivablePool is Ownable {
         string calldata unit,
         uint256 referenceValue,
         ICommodityAssetRegistry.AssetStatus status
-    ) external onlyOwner returns (uint256 assetId) {
+    ) external returns (uint256 assetId) {
         assetId = registry.registerAsset(
             issuer,
             name,
@@ -118,11 +117,10 @@ contract ReceivablePool is Ownable {
     }
 
     /// @notice 通过池子代理更新商品资产状态（池子是 registry 的 owner）
-    /// @dev 仅池子 owner 可调用
     function updateAssetStatus(
         uint256 assetId,
         ICommodityAssetRegistry.AssetStatus status
-    ) external onlyOwner {
+    ) external {
         registry.updateStatus(assetId, status);
     }
 
@@ -138,7 +136,7 @@ contract ReceivablePool is Ownable {
         address payer,
         uint16 interestRateBps,
         uint64 tenorDays
-    ) external onlyOwner returns (uint256 dealId) {
+    ) external returns (uint256 dealId) {
         require(borrower != address(0), "Pool: borrower missing");
         require(payer != address(0), "Pool: payer missing");
 
