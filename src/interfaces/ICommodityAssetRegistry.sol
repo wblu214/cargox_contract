@@ -18,4 +18,14 @@ interface ICommodityAssetRegistry {
     function assetIssuer(uint256 assetId) external view returns (address);
 
     function updateStatus(uint256 assetId, AssetStatus status) external;
+
+    function registerAsset(
+        address issuer,
+        string calldata name,
+        string calldata metadataURI,
+        uint256 quantity,
+        string calldata unit,
+        uint256 referenceValue,
+        AssetStatus status
+    ) external returns (uint256 assetId);
 }

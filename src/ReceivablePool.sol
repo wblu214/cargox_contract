@@ -95,6 +95,37 @@ contract ReceivablePool is Ownable {
         registry = registry_;
     }
 
+    /// @notice 通过池子代理注册商品资产（池子是 registry 的 owner）
+    /// @dev 仅池子 owner 可调用；状态在创建时即设定
+    function registerAsset(
+        address issuer,
+        string calldata name,
+        string calldata metadataURI,
+        uint256 quantity,
+        string calldata unit,
+        uint256 referenceValue,
+        ICommodityAssetRegistry.AssetStatus status
+    ) external onlyOwner returns (uint256 assetId) {
+        assetId = registry.registerAsset(
+            issuer,
+            name,
+            metadataURI,
+            quantity,
+            unit,
+            referenceValue,
+            status
+        );
+    }
+
+    /// @notice 通过池子代理更新商品资产状态（池子是 registry 的 owner）
+    /// @dev 仅池子 owner 可调用
+    function updateAssetStatus(
+        uint256 assetId,
+        ICommodityAssetRegistry.AssetStatus status
+    ) external onlyOwner {
+        registry.updateStatus(assetId, status);
+    }
+
     // -------------------------------------------------------------------------
     // 核心业务流程：创建融资、分批提取、还款
     // -------------------------------------------------------------------------
@@ -109,6 +140,7 @@ contract ReceivablePool is Ownable {
         uint64 tenorDays
     ) external onlyOwner returns (uint256 dealId) {
         require(borrower != address(0), "Pool: borrower missing");
+        require(payer != address(0), "Pool: payer missing");
 
         PoolBucket storage poolData = _pools[assetId];
 

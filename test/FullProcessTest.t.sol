@@ -6,6 +6,8 @@ import {MockUSDT} from "../src/MockUSDT.sol";
 import {CommodityAssetRegistry} from "../src/CommodityAssetRegistry.sol";
 import {ReceivablePool, IERC20} from "../src/ReceivablePool.sol";
 import {ICommodityAssetRegistry} from "../src/interfaces/ICommodityAssetRegistry.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {console} from "forge-std/console.sol";
 
 contract FullProcessTest is Test {
     MockUSDT internal usdt;
@@ -27,6 +29,9 @@ contract FullProcessTest is Test {
         usdt = new MockUSDT();
         registry = new CommodityAssetRegistry();
         pool = new ReceivablePool(IERC20(address(usdt)), ICommodityAssetRegistry(address(registry)), owner);
+
+        vm.prank(owner);
+        registry.transferOwnership(address(pool));
         
         // 给LP铸币并授权
         usdt.mint(lp, 2_000_000e6);
@@ -39,30 +44,27 @@ contract FullProcessTest is Test {
         usdt.approve(address(pool), type(uint256).max);
     }
 
-    /// @dev Owner registers the asset, promotes it to InTransit, then hands registry control to the pool.
+    /// @dev Owner registers the asset via the pool passthrough (pool is the registry owner).
     function _registerAsset(string memory name, string memory metadata) internal returns (uint256 assetId) {
         vm.prank(owner);
-        assetId = registry.registerAsset(
+        assetId = pool.registerAsset(
             borrower,
             name,
             metadata,
             1000,
             "ton",
             ASSET_VALUE,
-            CommodityAssetRegistry.AssetStatus.Registered
+            ICommodityAssetRegistry.AssetStatus.Registered
         );
 
         vm.prank(owner);
-        registry.updateStatus(assetId, CommodityAssetRegistry.AssetStatus.InTransit);
-
-        vm.prank(owner);
-        registry.transferOwnership(address(pool));
+        pool.updateAssetStatus(assetId, ICommodityAssetRegistry.AssetStatus.InTransit);
     }
 
     /// @dev The pool (current owner of the registry) marks the asset as cleared so LPs can exit.
     function _markAssetCleared(uint256 assetId) internal {
-        vm.prank(address(pool));
-        registry.updateStatus(assetId, CommodityAssetRegistry.AssetStatus.Cleared);
+        vm.prank(owner);
+        pool.updateAssetStatus(assetId, ICommodityAssetRegistry.AssetStatus.Cleared);
     }
 
     function testFullBusinessProcess() public {
@@ -195,5 +197,41 @@ contract FullProcessTest is Test {
         
         uint256 lpEarnings = usdt.balanceOf(lp) - lpBalanceBefore;
         assertEq(lpEarnings, payoff);
+    }
+
+    function testRegisterAssetThroughPoolRequiresOwner() public {
+        vm.prank(lp);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, lp));
+        pool.registerAsset(
+            borrower,
+            "Nickel",
+            "ipfs://nickel",
+            1000,
+            "ton",
+            ASSET_VALUE,
+            ICommodityAssetRegistry.AssetStatus.InTransit
+        );
+    }
+
+    function testUpdateStatusRequiresOwner() public {
+        vm.prank(lp);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, lp));
+        pool.updateAssetStatus(1, ICommodityAssetRegistry.AssetStatus.Cleared);
+    }
+
+    function testCannotCreateDealWithZeroPayer() public {
+        uint256 assetId = _registerAsset("Cobalt", "ipfs://cobalt");
+
+        vm.prank(owner);
+        vm.expectRevert(bytes("Pool: payer missing"));
+        pool.createFinancingDeal(
+            assetId,
+            borrower,
+            address(0),
+            INTEREST_BPS,
+            TENOR_DAYS
+        );
+
+        console.log("Asset %d remains InTransit after failed deal creation", assetId);
     }
 }
