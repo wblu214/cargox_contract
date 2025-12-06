@@ -1,74 +1,50 @@
 ## PicWe Commodity Credit Network (CCN) MVP
 
-This repository contains the minimum viable version of the PicWe Commodity Credit Network. The MVP showcases how a registered commodity lot can be financed through an on-chain receivable pool and later settled so that liquidity providers can exit with principal plus interest.
+Receivable financing demo for commodity lots. Assets are registered in an on-chain registry, financed through a receivable pool, and repaid so LPs can exit with principal + interest. **Permissions are open for hackathon/demo use**: anyone can register assets, move statuses, and create deals; business checks (correct status, matching borrower/payer, nonzero addresses) still apply.
 
 ### Contracts
+- `CommodityAssetRegistry`: Stores asset metadata and status (`Registered → InTransit → Collateralized → Cleared`).
+- `ReceivablePool`: Manages financing deals, LP deposits/withdrawals, borrower drawdowns, payer repayments, and status updates.
+- `MockUSDT`: 6-decimal ERC20 used as the stablecoin.
 
-- `CommodityAssetRegistry`: Stores metadata for each physical lot and tracks its status (`Registered → InTransit → Collateralized → Cleared`). Ownership is handed to the financing pool so that risk procedures can update status inside pool flows.
-- `ReceivablePool`: Stablecoin pool that creates financing deals for registered assets, manages LP deposits, borrower drawdowns, and payer repayments, and distributes proceeds back to LPs.
-- `MockUSDT`: Six-decimal ERC20 token used for local testing and demo deployments.
+### Status enum (frontends must match)
+- `0 Registered`
+- `1 InTransit`
+- `2 Collateralized`
+- `3 Cleared`
 
-Tests live in `test/FullProcessTest.t.sol` and simulate the full lifecycle: asset registration, LP funding, borrower drawdowns, payer repayment, and LP withdrawals.
+### Core flow (demo script)
+1) `registerAsset(...)` → returns `assetId`.  
+2) `updateAssetStatus(assetId, InTransit)` (value `1`).  
+3) `createFinancingDeal(assetId, borrower, payer, interestBps, tenorDays)` → returns `dealId`.  
+4) LP `deposit(assetId, amount)` (after approving USDT).  
+5) Borrower `drawdown(dealId, amount)` (must be `borrower`).  
+6) Payer `repay(dealId)` (must be `payer`; pays `payoffAmount(dealId)`).  
+7) `updateAssetStatus(assetId, Cleared)` (value `3`).  
+8) LP `withdraw(assetId)`.
 
-### Architecture Overview
+### BSC Testnet deployment (chain 97)
+- `MockUSDT`: `0xE707FEE53BfDd6C69Fc8D05caF148a6C28Edf49b`
+- `CommodityAssetRegistry`: `0x8dB7E0ed381a43de2b7c46585529e9bA0063eAA1`
+- `ReceivablePool`: `0x9F213109d2E9ADEA09e247AFC56bB2A03214C4E7`
 
-At a high level the CCN MVP models three actors around a commodity shipment:
-
-- **Commodity issuer / merchant** (borrower) registers a physical lot in `CommodityAssetRegistry`. The registry stores descriptive metadata (e.g. “1,000 tons Copper”), a reference value in USDT terms, and a status machine (`Registered → InTransit → Collateralized → Cleared`). Only the owner (risk admin) can change status.
-- **ReceivablePool** acts as the credit facility. Once the asset is in transit, the pool creates a financing deal that:
-  1. Reads the asset’s reference value to set `principal`.
-  2. Locks a fixed interest amount (basis points).
-  3. Moves the asset to `Collateralized`.
-  LPs can then deposit USDT into the asset bucket up to `principal - reservedInterest`. Borrowers draw down liquidity in tranches, and payers settle `principal + interest`.
-- **LPs** deposit USDT into asset-specific buckets and receive prorata interest after the payer repays and the asset is marked `Cleared`.
-
-This architecture ensures the registry remains the single source of truth for collateral status while the pool enforces liquidity constraints and return distribution. The flow mirrors the deck: register goods → mark in transit → finance → repayment/clearing → LP exit.
-
-### Prerequisites
-
-1. Install [Foundry](https://book.getfoundry.sh/getting-started/installation).  
-2. Fetch dependencies (already vendored, but you can re-run if needed):
-   ```bash
-   forge install
-   ```
-
-### Running Tests
-
+### Local development
+Prereqs: [Foundry](https://book.getfoundry.sh/getting-started/installation)
 ```bash
 forge test
 ```
 
-The suite uses `MockUSDT` and helper state transitions to walk through the full financing flow, so a passing run confirms that owner-driven status updates and pool accounting behave as expected.
-
 ### Deployment
+Broadcast the full stack (MockUSDT, registry, pool):
+```bash
+export PRIVATE_KEY=0x...
+export RPC_URL=https://your.rpc
+forge script script/DeployContracts.s.sol --rpc-url $RPC_URL --broadcast -vvvv
+```
+Script output prints deployed addresses.
 
-A Foundry script (`script/DeployContracts.s.sol`) deploys the entire stack—`MockUSDT`, `CommodityAssetRegistry`, and `ReceivablePool`—and transfers registry ownership to the pool so it can manage collateralization on deal creation.
-
-1. Export the deployer key and RPC endpoint:
-   ```bash
-   export PRIVATE_KEY=0x...
-   export RPC_URL=https://your.rpc.endpoint
-   ```
-2. Dry-run the deployment against a fork or testnet (no broadcast):
-   ```bash
-   forge script script/DeployContracts.s.sol --rpc-url $RPC_URL
-   ```
-3. Broadcast the deployment transactions:
-   ```bash
-   forge script script/DeployContracts.s.sol --rpc-url $RPC_URL --broadcast
-   ```
-
-The script prints the deployed addresses and the designated pool owner. After deployment you can mint `MockUSDT` to borrowers/payers as needed and start registering assets through the pool owner account.
-
-### Project Structure
-
-- `src/`: Core contracts (`CommodityAssetRegistry`, `ReceivablePool`, `MockUSDT`, interfaces).
-- `test/`: Foundry tests covering end-to-end flows.
-- `script/`: Deployment utilities (`DeployContracts.s.sol`).
-- `out/`: Build artifacts (auto-generated by Foundry).
-
-### Next Steps
-
-- Extend the registry to include richer metadata or access controls.
-- Integrate real stablecoins by swapping out `MockUSDT`.
-- Automate borrower/payer onboarding logic or plug in off-chain data feeds for asset monitoring.
+### Project structure
+- `src/`: contracts
+- `test/`: end-to-end Foundry tests
+- `script/`: deployment script
+- `out/`: build artifacts
